@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemoryMind: Your Personal Assistant</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Use Inter Font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <!-- Main Container -->
+    <div class="w-full max-w-5xl flex flex-col lg:flex-row gap-6">
+
+        <!-- Reminders Panel (Left/Top) -->
+        <div class="lg:w-1/3 w-full bg-white rounded-xl shadow-lg p-6 border border-gray-100 h-96 lg:h-[70vh] flex flex-col">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 mr-2 text-blue-500">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.248 24.248 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+                Active Reminders
+            </h2>
+            <div id="reminders-list" class="flex-grow overflow-y-auto space-y-3 p-2 -m-2">
+                <!-- Reminders will be injected here -->
+                <p id="reminders-placeholder" class="text-gray-400 text-center mt-8">No reminders set yet.</p>
+            </div>
+            <p class="text-xs text-gray-400 mt-4 border-t pt-2 text-red-500 font-medium">
+                *Reminders are saved locally in your browser.
+            </p>
+        </div>
+
+        <!-- Chat Panel (Right/Bottom) -->
+        <div class="lg:w-2/3 w-full bg-white rounded-xl shadow-lg flex flex-col h-[70vh] border border-gray-100">
+            <!-- Chat Header -->
+            <div class="p-4 bg-blue-600 text-white rounded-t-xl">
+                <h2 class="text-xl font-bold">MemoryMind Assistant</h2>
+                <p class="text-sm opacity-90">Ask me to remember anything!</p>
+            </div>
+
+            <!-- Chat Messages Area -->
+            <div id="chat-messages" class="flex-grow overflow-y-auto p-4 space-y-4">
+                <div class="flex justify-start">
+                    <div class="bg-blue-100 text-blue-800 p-3 rounded-tr-xl rounded-b-xl max-w-xs shadow-md">
+                        Hi there! I'm MemoryMind, your personal assistant. Tell me what to remind you about (e.g., "Remind me to call Mom tomorrow at 5 PM").
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input -->
+            <div class="p-4 border-t border-gray-200 flex space-x-3">
+                <input
+                    id="chat-input"
+                    type="text"
+                    placeholder="Type your message or reminder..."
+                    class="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    onkeypress="if(event.key === 'Enter') sendMessage()"
+                />
+                <button
+                    id="send-button"
+                    onclick="sendMessage()"
+                    class="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL APP STATE ---
+        const LOCAL_STORAGE_KEY = 'memorymind_reminders';
+        window.chatHistory = []; // Stores the chat messages for context
+
+        // --- LOCAL STORAGE LOGIC ---
+
+        // Retrieves all reminders from localStorage
+        const getRemindersCollection = () => {
+            try {
+                const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                return stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                console.error("Error reading from localStorage:", e);
+                return [];
+            }
+        };
+
+        // Saves the current array of reminders back to localStorage
+        const setRemindersCollection = (reminders) => {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reminders));
+                renderReminders(reminders); // Re-render the UI after saving
+            } catch (e) {
+                console.error("Error writing to localStorage:", e);
+            }
+        };
+
+        // Loads, sorts, and renders reminders from localStorage
+        const loadAndRenderReminders = () => {
+            let reminders = getRemindersCollection();
+            // Sort by date/time (earliest first) in memory
+            reminders.sort((a, b) => (a.dateTime > b.dateTime) ? 1 : -1);
+            renderReminders(reminders);
+        };
+
+        window.saveReminder = async (text, dateTime) => {
+            if (!text || !dateTime) return false;
+
+            const newReminder = {
+                id: Date.now().toString(), // Use timestamp as unique ID
+                text: text,
+                dateTime: dateTime, // ISO 8601 string
+                completed: false,
+                createdAt: new Date().toISOString()
+            };
+
+            const reminders = getRemindersCollection();
+            reminders.push(newReminder);
+            setRemindersCollection(reminders);
+            return true;
+        };
+
+        window.deleteReminder = (id) => {
+            const reminders = getRemindersCollection();
+            const updatedReminders = reminders.filter(r => r.id !== id);
+            setRemindersCollection(updatedReminders);
+        };
+
+        // --- UI RENDERING LOGIC ---
+
+        const renderReminders = (reminders) => {
+            const listContainer = document.getElementById('reminders-list');
+            listContainer.innerHTML = '';
+            const placeholder = document.getElementById('reminders-placeholder');
+
+            const activeReminders = reminders.filter(r => !r.completed);
+
+            if (activeReminders.length === 0) {
+                placeholder.classList.remove('hidden');
+                return;
+            }
+
+            placeholder.classList.add('hidden');
+
+            activeReminders.forEach(reminder => {
+                const reminderDate = new Date(reminder.dateTime);
+                const formatter = new Intl.DateTimeFormat('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+                const displayTime = formatter.format(reminderDate);
+
+                const reminderDiv = document.createElement('div');
+                reminderDiv.className = "flex justify-between items-center p-3 bg-white border border-blue-200 rounded-lg shadow-sm hover:shadow-md transition-shadow";
+                reminderDiv.innerHTML = `
+                    <div>
+                        <p class="text-sm font-medium text-gray-800">${reminder.text}</p>
+                        <p class="text-xs text-blue-500 mt-1 font-mono">${displayTime}</p>
+                    </div>
+                    <button onclick="deleteReminder('${reminder.id}')" class="text-red-400 hover:text-red-600 transition p-1 rounded-full bg-red-50 hover:bg-red-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.166L15.9 5.25A2.25 2.25 0 0013.812 3H8.188a2.25 2.25 0 00-2.083 1.25L3.34 6.5c.338.058.678.113 1.022.166m15.048 0c.263.141.493.317.69.513M4.24 6.666a.89.89 0 01-.166-.341" />
+                        </svg>
+                    </button>
+                `;
+                listContainer.appendChild(reminderDiv);
+            });
+        };
+
+        const addMessageToChat = (text, sender) => {
+            const chatMessages = document.getElementById('chat-messages');
+            const isUser = sender === 'user';
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+
+            const bgColor = isUser ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800';
+            const borderRadius = isUser ? 'rounded-tl-xl rounded-b-xl' : 'rounded-tr-xl rounded-b-xl';
+
+            messageDiv.innerHTML = `
+                <div class="${bgColor} p-3 ${borderRadius} max-w-xs shadow-md whitespace-pre-wrap">
+                    ${text}
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+
+            // Add to chat history for context (only store the text and role)
+            window.chatHistory.push({ role: isUser ? 'user' : 'model', parts: [{ text: text }] });
+            // Limit history to last 10 turns
+            if (window.chatHistory.length > 10) {
+                 window.chatHistory = window.chatHistory.slice(window.chatHistory.length - 10);
+            }
+        };
+
+        // --- GEMINI API & REMINDER PROCESSING LOGIC ---
+
+        // IMPORTANT: If running this file outside the secure environment,
+        // you MUST replace the empty string with your actual Gemini API key.
+        const GEMINI_API_KEY = "AIzaSyBtiTiDgWWUwSagoauqcLBkaL8YE7vQqGo"; 
+
+        const getGeminiResponse = async (prompt) => {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
+            
+            const systemPrompt = `Act as a helpful, conversational personal assistant named MemoryMind. Your primary goal is to respond to the user's chat messages. Your secondary, critical function is to identify when the user wants to set a reminder and extract the reminder text and target date/time. The date/time must be converted into an ISO 8601 string (e.g., '2025-10-20T14:30:00Z'). If the date/time is vague (e.g., "tomorrow," "next week"), infer a reasonable time (e.g., "tomorrow at 9:00 AM") and explicitly state the inferred date/time in the reminder text. If the request is NOT a reminder, choose the 'CHAT' action.`;
+
+            // Prepare history for API (including the new user prompt)
+            const contents = [...window.chatHistory, { role: "user", parts: [{ text: prompt }] }];
+
+            const payload = {
+                contents: contents,
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "action": {
+                                "type": "STRING",
+                                "enum": ["CHAT", "SET_REMINDER"],
+                                "description": "The type of action to perform. 'SET_REMINDER' if the user requests a reminder, otherwise 'CHAT'."
+                            },
+                            "data": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "text": { "type": "STRING", "description": "If SET_REMINDER, the reminder text. If CHAT, the conversational response text." },
+                                    "date": { "type": "STRING", "description": "Required only for SET_REMINDER. The reminder ISO 8601 timestamp (e.g., 2024-06-25T10:00:00Z). If not specified by the user, infer a reasonable date/time." }
+                                },
+                                "required": ["text"]
+                            }
+                        },
+                        "required": ["action", "data"]
+                    }
+                }
+            };
+
+            for (let i = 0; i < 3; i++) { // Retry up to 3 times
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(`API returned status ${response.status}: ${JSON.stringify(errorData)}`);
+                    }
+
+                    const result = await response.json();
+                    const jsonString = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                    if (jsonString) {
+                        return JSON.parse(jsonString);
+                    } else {
+                        throw new Error("API response format was invalid or empty.");
+                    }
+
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i < 2) await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); // Exponential backoff
+                    else throw error; // Throw the original error or the last attempt error
+                }
+            }
+        };
+
+        window.sendMessage = async () => {
+            const inputElement = document.getElementById('chat-input');
+            const sendButton = document.getElementById('send-button');
+            const userText = inputElement.value.trim();
+
+            if (!userText) return;
+
+            // 1. Disable input/button and display user message
+            inputElement.value = '';
+            sendButton.disabled = true;
+            inputElement.disabled = true;
+            addMessageToChat(userText, 'user');
+
+            // 2. Call Gemini API
+            try {
+                // Key check is now technically redundant since it has a value, but helpful for debugging
+                if (GEMINI_API_KEY === "") {
+                    throw new Error("API Key is empty. Please check the script section to insert your key.");
+                }
+
+                const llmResponse = await getGeminiResponse(userText);
+
+                if (llmResponse.action === 'SET_REMINDER' && llmResponse.data.date) {
+                    // 3a. Handle Reminder Action
+                    const text = llmResponse.data.text;
+                    const date = llmResponse.data.date;
+                    const success = await window.saveReminder(text, date);
+
+                    const confirmationText = success
+                        ? `I've successfully set a reminder for you: "${text}" on ${new Date(date).toLocaleString()}. You can see it in your Active Reminders list.`
+                        : `I ran into a problem saving that reminder locally. Please check your browser console for details.`;
+
+                    addMessageToChat(confirmationText, 'model');
+
+                } else {
+                    // 3b. Handle Conversational Chat Action
+                    const responseText = llmResponse.data.text || "Sorry, I couldn't generate a conversational response.";
+                    addMessageToChat(responseText, 'model');
+                }
+
+            } catch (error) {
+                console.error("Gemini/Reminder processing error:", error);
+                
+                let userMessage;
+                if (error.message.includes("API Key is empty")) {
+                    userMessage = "🛑 **API Key Missing:** It looks like you need to paste your Gemini API key into the script. Please find the `GEMINI_API_KEY` line in the Canvas code and replace the placeholder.";
+                } else if (error.message.includes("API returned status 400")) {
+                    userMessage = "⚠️ **Connection Error (400):** The most common reason for this error is a **missing or invalid Gemini API Key**. Please ensure you have correctly pasted your key into the script.";
+                } else {
+                    userMessage = "I'm sorry, I'm having trouble connecting right now. Please try a different query or check the console for details.";
+                }
+
+                addMessageToChat(userMessage, 'model');
+            } finally {
+                // 4. Re-enable input/button
+                sendButton.disabled = false;
+                inputElement.disabled = false;
+                inputElement.focus();
+            }
+        };
+
+        // --- INITIALIZATION ON LOAD ---
+        window.onload = () => {
+            loadAndRenderReminders();
+        };
+
+    </script>
+</body>
+</html>
